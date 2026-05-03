@@ -51,7 +51,7 @@ To change `WINDOW_HOURS` on the live deployment: `fly secrets set WINDOW_HOURS=2
 ## Roadmap / TODO
 
 - ~~**`/echo` command**~~ — done. Admin types `/echo <text>` in the group; bot deletes the command and resends as its own message. Silently ignores non-admins.
-- **Repeat-offender warning** — currently the bot deletes silently, which can confuse users. If the same user gets deleted more than 2 times within 5 minutes, auto-reply once explaining why (then stay silent again to avoid noise). Needs a short-term in-memory counter (no need to persist to SQLite).
+- ~~**Repeat-offender warning**~~ — done. On the 2nd deletion for the same user in a session, the bot replies in Ukrainian with their first name and the exact time remaining until they can repost. Warning auto-deletes after 2 minutes. Counter is in-memory (`deletionCounts` Map in `index.js`), resets on restart.
 - **Image tracking** – some users posts only photo ads without text. It should be deleted too.
 - **Forwarded messages** – make sure it works as expected, when user forwards it's own message.
 - **Analytics** — track deletion counts per user/chat over time. Think about what would actually be useful to surface (top spammers, busiest hours, etc.) before building.

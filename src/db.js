@@ -42,9 +42,21 @@ function recordMessage(userId, chatId, text) {
   `).run(userId, chatId, hash, Date.now());
 }
 
+function getOriginalTimestamp(userId, chatId, text, windowHours) {
+  const hash = hashText(text);
+  const cutoff = Date.now() - windowHours * 60 * 60 * 1000;
+  const row = db.prepare(`
+    SELECT created_at FROM seen_messages
+    WHERE user_id = ? AND chat_id = ? AND text_hash = ? AND created_at > ?
+    ORDER BY created_at DESC
+    LIMIT 1
+  `).get(userId, chatId, hash, cutoff);
+  return row ? row.created_at : null;
+}
+
 function pruneOld(windowHours) {
   const cutoff = Date.now() - windowHours * 60 * 60 * 1000;
   return db.prepare(`DELETE FROM seen_messages WHERE created_at < ?`).run(cutoff).changes;
 }
 
-module.exports = { isDuplicate, recordMessage, pruneOld };
+module.exports = { isDuplicate, recordMessage, pruneOld, getOriginalTimestamp };
