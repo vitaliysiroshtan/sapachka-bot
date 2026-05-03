@@ -4,6 +4,10 @@ const { hashText, isDuplicate, recordMessage, pruneOld, getOriginalTimestamp } =
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const WINDOW_HOURS = parseFloat(process.env.WINDOW_HOURS || '48');
+if (!Number.isFinite(WINDOW_HOURS) || WINDOW_HOURS <= 0) {
+  console.error(`Invalid WINDOW_HOURS: "${process.env.WINDOW_HOURS}". Must be a positive number.`);
+  process.exit(1);
+}
 const ALLOWED_CHATS = process.env.ALLOWED_CHATS
   ? process.env.ALLOWED_CHATS.split(',').map(id => parseInt(id.trim(), 10))
   : null;
@@ -69,6 +73,7 @@ bot.command('chatid', (ctx) => ctx.reply(`Chat ID: \`${ctx.chat.id}\``, { parse_
 
 bot.command('echo', async (ctx) => {
   if (ctx.chat.type === 'private') return;
+  if (ALLOWED_CHATS && !ALLOWED_CHATS.includes(ctx.chat.id)) return;
   const text = ctx.match;
   if (!text) return;
   const member = await ctx.getChatMember(ctx.from.id);
