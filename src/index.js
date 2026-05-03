@@ -24,6 +24,16 @@ bot.command('start', (ctx) => {
 // Helper: send chat ID — useful for setting up ALLOWED_CHATS
 bot.command('chatid', (ctx) => ctx.reply(`Chat ID: \`${ctx.chat.id}\``, { parse_mode: 'Markdown' }));
 
+bot.command('echo', async (ctx) => {
+  if (ctx.chat.type === 'private') return;
+  const text = ctx.match;
+  if (!text) return;
+  const member = await ctx.getChatMember(ctx.from.id);
+  if (!['administrator', 'creator'].includes(member.status)) return;
+  await ctx.deleteMessage();
+  await ctx.reply(text);
+});
+
 bot.on('message:text', async (ctx) => {
   // Only act in groups and supergroups — never in private chats
   if (ctx.chat.type === 'private') return;
