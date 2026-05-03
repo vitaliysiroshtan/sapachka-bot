@@ -4,6 +4,9 @@ const { isDuplicate, recordMessage, pruneOld } = require('./db');
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const WINDOW_HOURS = parseFloat(process.env.WINDOW_HOURS || '48');
+const ALLOWED_CHATS = process.env.ALLOWED_CHATS
+  ? process.env.ALLOWED_CHATS.split(',').map(id => parseInt(id.trim(), 10))
+  : null; // null = unrestricted
 
 if (!BOT_TOKEN) {
   console.error('BOT_TOKEN is not set. Copy .env.example to .env and fill it in.');
@@ -11,6 +14,9 @@ if (!BOT_TOKEN) {
 }
 
 const bot = new Bot(BOT_TOKEN);
+
+// Helper: send chat ID — useful for setting up ALLOWED_CHATS
+bot.command('chatid', (ctx) => ctx.reply(`Chat ID: \`${ctx.chat.id}\``, { parse_mode: 'Markdown' }));
 
 bot.on('message:text', async (ctx) => {
   // Only act in groups and supergroups — never in private chats
@@ -21,6 +27,9 @@ bot.on('message:text', async (ctx) => {
   const text = ctx.message.text;
 
   if (!userId) return;
+
+  // Ignore groups not on the whitelist
+  if (ALLOWED_CHATS && !ALLOWED_CHATS.includes(chatId)) return;
 
   if (isDuplicate(userId, chatId, text, WINDOW_HOURS)) {
     try {
@@ -44,4 +53,4 @@ setInterval(() => {
 bot.catch((err) => console.error('Unhandled bot error:', err));
 
 bot.start();
-console.log(`Bot started. Duplicate window: ${WINDOW_HOURS}h`);
+console.log(`Bot started. Duplicate window: ${WINDOW_HOURS}h${ALLOWED_CHATS ? ` | Allowed chats: ${ALLOWED_CHATS.join(', ')}` : ' | No chat restrictions'}`);
