@@ -1,0 +1,17 @@
+app = "sapachka-bot"
+primary_region = "ams"
+
+[build]
+
+[env]
+  WINDOW_HOURS = "48"
+  DB_PATH = "/data/data.db"
+
+[[mounts]]
+  source = "sapachka_data"
+  destination = "/data"
+
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1
