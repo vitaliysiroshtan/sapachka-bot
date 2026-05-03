@@ -15,6 +15,12 @@ if (!BOT_TOKEN) {
 
 const bot = new Bot(BOT_TOKEN);
 
+bot.command('start', (ctx) => {
+  if (ctx.chat.type === 'private') {
+    ctx.reply('This bot is for whitelisted groups only. Check github.com/vitaliysiroshtan/sapachka-bot to fork your own or contact the author for more details.');
+  }
+});
+
 // Helper: send chat ID — useful for setting up ALLOWED_CHATS
 bot.command('chatid', (ctx) => ctx.reply(`Chat ID: \`${ctx.chat.id}\``, { parse_mode: 'Markdown' }));
 
