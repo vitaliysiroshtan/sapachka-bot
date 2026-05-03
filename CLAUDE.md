@@ -48,6 +48,13 @@ data.db      — SQLite file created at first run (never commit, not on Fly)
 
 To change `WINDOW_HOURS` on the live deployment: `fly secrets set WINDOW_HOURS=24`
 
+## Roadmap / TODO
+
+- **`/echo` command** — let an admin send a message to the group as the bot (useful for announcements). Should be restricted to admins only, not all users.
+- **Repeat-offender warning** — currently the bot deletes silently, which can confuse users. If the same user gets deleted more than 2 times within 5 minutes, auto-reply once explaining why (then stay silent again to avoid noise). Needs a short-term in-memory counter (no need to persist to SQLite).
+- **Analytics** — track deletion counts per user/chat over time. Think about what would actually be useful to surface (top spammers, busiest hours, etc.) before building.
+- **Fuzzy/similar message detection** — originally planned next phase after identical-only. Likely needs a similarity threshold (e.g. Levenshtein distance or cosine similarity on word sets). Decide on threshold carefully to avoid false positives.
+
 ## Style Guidelines
 
 CommonJS (`require`/`module.exports`). No TypeScript. Keep logic in the two existing files unless complexity grows significantly.
