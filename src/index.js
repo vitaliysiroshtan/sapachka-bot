@@ -1,6 +1,6 @@
 require('dotenv').config();
 const { Bot } = require('grammy');
-const { isDuplicate, recordMessage, pruneOld, getOriginalTimestamp } = require('./db');
+const { hashText, isDuplicate, recordMessage, pruneOld, getOriginalTimestamp } = require('./db');
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const WINDOW_HOURS = parseFloat(process.env.WINDOW_HOURS || '48');
@@ -23,6 +23,42 @@ function formatRemaining(ms) {
   return `${hours}г ${minutes}хв`;
 }
 
+async function handleMessage(ctx, contentKey) {
+  const userId = ctx.from?.id;
+  const chatId = ctx.chat.id;
+
+  if (!userId) return;
+  if (ALLOWED_CHATS && !ALLOWED_CHATS.includes(chatId)) return;
+
+  if (isDuplicate(userId, chatId, contentKey, WINDOW_HOURS)) {
+    try {
+      await ctx.deleteMessage();
+      console.log(`[${new Date().toISOString()}] Deleted duplicate from user ${userId} in chat ${chatId}`);
+
+      const key = `${userId}:${chatId}`;
+      const count = (deletionCounts.get(key) || 0) + 1;
+      deletionCounts.set(key, count);
+
+      if (count === 2) {
+        const originalTs = getOriginalTimestamp(userId, chatId, contentKey, WINDOW_HOURS);
+        const remainingMs = originalTs
+          ? (originalTs + WINDOW_HOURS * 60 * 60 * 1000) - Date.now()
+          : WINDOW_HOURS * 60 * 60 * 1000;
+        const warning = await ctx.reply(
+          `${ctx.from.first_name}, повторення оголошень не частіше ніж раз в два дні. До наступної публікації: ${formatRemaining(remainingMs)}`
+        );
+        setTimeout(async () => {
+          try { await ctx.api.deleteMessage(chatId, warning.message_id); } catch (_) {}
+        }, 2 * 60 * 1000);
+      }
+    } catch (err) {
+      console.error(`Could not delete message: ${err.message}`);
+    }
+  } else {
+    recordMessage(userId, chatId, contentKey);
+  }
+}
+
 bot.command('start', (ctx) => {
   if (ctx.chat.type === 'private') {
     ctx.reply('This bot is for whitelisted groups only. Check github.com/vitaliysiroshtan/sapachka-bot to fork your own or contact the author for more details.');
@@ -43,41 +79,13 @@ bot.command('echo', async (ctx) => {
 
 bot.on('message:text', async (ctx) => {
   if (ctx.chat.type === 'private') return;
+  await handleMessage(ctx, hashText(ctx.message.text));
+});
 
-  const userId = ctx.from?.id;
-  const chatId = ctx.chat.id;
-  const text = ctx.message.text;
-
-  if (!userId) return;
-  if (ALLOWED_CHATS && !ALLOWED_CHATS.includes(chatId)) return;
-
-  if (isDuplicate(userId, chatId, text, WINDOW_HOURS)) {
-    try {
-      await ctx.deleteMessage();
-      console.log(`[${new Date().toISOString()}] Deleted duplicate from user ${userId} in chat ${chatId}`);
-
-      const key = `${userId}:${chatId}`;
-      const count = (deletionCounts.get(key) || 0) + 1;
-      deletionCounts.set(key, count);
-
-      if (count === 2) {
-        const originalTs = getOriginalTimestamp(userId, chatId, text, WINDOW_HOURS);
-        const remainingMs = originalTs
-          ? (originalTs + WINDOW_HOURS * 60 * 60 * 1000) - Date.now()
-          : WINDOW_HOURS * 60 * 60 * 1000;
-        const warning = await ctx.reply(
-          `${ctx.from.first_name}, повторення оголошень не частіше ніж раз в два дні. До наступної публікації: ${formatRemaining(remainingMs)}`
-        );
-        setTimeout(async () => {
-          try { await ctx.api.deleteMessage(chatId, warning.message_id); } catch (_) {}
-        }, 2 * 60 * 1000);
-      }
-    } catch (err) {
-      console.error(`Could not delete message: ${err.message}`);
-    }
-  } else {
-    recordMessage(userId, chatId, text);
-  }
+bot.on('message:photo', async (ctx) => {
+  if (ctx.chat.type === 'private') return;
+  const photo = ctx.message.photo.at(-1); // largest available size = most reliable unique id
+  await handleMessage(ctx, photo.file_unique_id);
 });
 
 setInterval(() => {

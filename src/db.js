@@ -23,34 +23,31 @@ function hashText(text) {
     .digest('hex');
 }
 
-function isDuplicate(userId, chatId, text, windowHours) {
-  const hash = hashText(text);
+function isDuplicate(userId, chatId, contentKey, windowHours) {
   const cutoff = Date.now() - windowHours * 60 * 60 * 1000;
   const row = db.prepare(`
     SELECT 1 FROM seen_messages
     WHERE user_id = ? AND chat_id = ? AND text_hash = ? AND created_at > ?
     LIMIT 1
-  `).get(userId, chatId, hash, cutoff);
+  `).get(userId, chatId, contentKey, cutoff);
   return row !== undefined;
 }
 
-function recordMessage(userId, chatId, text) {
-  const hash = hashText(text);
+function recordMessage(userId, chatId, contentKey) {
   db.prepare(`
     INSERT INTO seen_messages (user_id, chat_id, text_hash, created_at)
     VALUES (?, ?, ?, ?)
-  `).run(userId, chatId, hash, Date.now());
+  `).run(userId, chatId, contentKey, Date.now());
 }
 
-function getOriginalTimestamp(userId, chatId, text, windowHours) {
-  const hash = hashText(text);
+function getOriginalTimestamp(userId, chatId, contentKey, windowHours) {
   const cutoff = Date.now() - windowHours * 60 * 60 * 1000;
   const row = db.prepare(`
     SELECT created_at FROM seen_messages
     WHERE user_id = ? AND chat_id = ? AND text_hash = ? AND created_at > ?
     ORDER BY created_at DESC
     LIMIT 1
-  `).get(userId, chatId, hash, cutoff);
+  `).get(userId, chatId, contentKey, cutoff);
   return row ? row.created_at : null;
 }
 
@@ -59,4 +56,4 @@ function pruneOld(windowHours) {
   return db.prepare(`DELETE FROM seen_messages WHERE created_at < ?`).run(cutoff).changes;
 }
 
-module.exports = { isDuplicate, recordMessage, pruneOld, getOriginalTimestamp };
+module.exports = { hashText, isDuplicate, recordMessage, pruneOld, getOriginalTimestamp };
