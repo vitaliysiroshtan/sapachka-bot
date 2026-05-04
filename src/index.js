@@ -20,6 +20,12 @@ if (!BOT_TOKEN) {
 const bot = new Bot(BOT_TOKEN);
 const deletionCounts = new Map(); // key: `${userId}:${chatId}`, value: number of deletions this session
 
+function mentionUser(user) {
+  const fullName = [user.first_name, user.last_name].filter(Boolean).join(' ');
+  const escaped = fullName.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return `<a href="tg://user?id=${user.id}">${escaped}</a>`;
+}
+
 function formatRemaining(ms) {
   const totalMinutes = Math.max(1, Math.ceil(ms / 60000));
   const hours = Math.floor(totalMinutes / 60);
@@ -49,7 +55,8 @@ async function handleMessage(ctx, contentKey) {
           ? (originalTs + WINDOW_HOURS * 60 * 60 * 1000) - Date.now()
           : WINDOW_HOURS * 60 * 60 * 1000;
         const warning = await ctx.reply(
-          `${ctx.from.first_name}, повторення оголошень не частіше ніж раз в два дні. До наступної публікації: ${formatRemaining(remainingMs)}`
+          `${mentionUser(ctx.from)}, повторення оголошень не частіше ніж раз в два дні. До наступної публікації: ${formatRemaining(remainingMs)}`,
+          { parse_mode: 'HTML' }
         );
         setTimeout(async () => {
           try { await ctx.api.deleteMessage(chatId, warning.message_id); } catch (_) {}
