@@ -8,14 +8,19 @@ db.pragma('journal_mode = WAL');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS seen_messages (
-    id        INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id   INTEGER NOT NULL,
-    chat_id   INTEGER NOT NULL,
-    text_hash TEXT    NOT NULL,
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,
+    chat_id    INTEGER NOT NULL,
+    text_hash  TEXT    NOT NULL,
     created_at INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_lookup
     ON seen_messages (user_id, chat_id, text_hash, created_at);
+
+  CREATE TABLE IF NOT EXISTS group_settings (
+    chat_id      INTEGER PRIMARY KEY,
+    window_hours REAL NOT NULL
+  );
 `);
 
 function hashText(text) {
@@ -52,9 +57,18 @@ function getOriginalTimestamp(userId, chatId, contentKey, windowHours) {
   return row ? row.created_at : null;
 }
 
+function getWindowHours(chatId) {
+  const row = db.prepare('SELECT window_hours FROM group_settings WHERE chat_id = ?').get(chatId);
+  return row ? row.window_hours : null;
+}
+
+function setWindowHours(chatId, hours) {
+  db.prepare('INSERT OR REPLACE INTO group_settings (chat_id, window_hours) VALUES (?, ?)').run(chatId, hours);
+}
+
 function pruneOld(windowHours) {
   const cutoff = Date.now() - windowHours * 60 * 60 * 1000;
   return db.prepare(`DELETE FROM seen_messages WHERE created_at < ?`).run(cutoff).changes;
 }
 
-module.exports = { hashText, isDuplicate, recordMessage, pruneOld, getOriginalTimestamp };
+module.exports = { hashText, isDuplicate, recordMessage, pruneOld, getOriginalTimestamp, getWindowHours, setWindowHours };
