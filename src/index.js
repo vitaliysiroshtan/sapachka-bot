@@ -11,6 +11,8 @@ if (!Number.isFinite(WINDOW_HOURS) || WINDOW_HOURS <= 0) {
 const ALLOWED_CHATS = process.env.ALLOWED_CHATS
   ? process.env.ALLOWED_CHATS.split(',').map(id => parseInt(id.trim(), 10))
   : null;
+const ADMIN_USER_ID = process.env.ADMIN_USER_ID ? parseInt(process.env.ADMIN_USER_ID, 10) : null;
+if (!ADMIN_USER_ID) console.warn('ADMIN_USER_ID not set — private /say command disabled.');
 
 if (!BOT_TOKEN) {
   console.error('BOT_TOKEN is not set. Copy .env.example to .env and fill it in.');
@@ -86,7 +88,23 @@ bot.command('start', (ctx) => {
 bot.command('chatid', (ctx) => ctx.reply(`Chat ID: \`${ctx.chat.id}\``, { parse_mode: 'Markdown' }));
 
 bot.command('say', async (ctx) => {
-  if (ctx.chat.type === 'private') return;
+  if (ctx.chat.type === 'private') {
+    if (!ADMIN_USER_ID || ctx.from.id !== ADMIN_USER_ID) return;
+    const match = ctx.match.match(/^(-?\d+)\s+([\s\S]+)$/);
+    if (!match) {
+      await ctx.reply('Usage: /say <chat_id> <message>');
+      return;
+    }
+    const [, targetChatId, text] = match;
+    try {
+      await ctx.api.sendMessage(parseInt(targetChatId), text);
+      await ctx.reply('Sent.');
+    } catch (err) {
+      await ctx.reply(`Failed: ${err.message}`);
+    }
+    return;
+  }
+
   if (ALLOWED_CHATS && !ALLOWED_CHATS.includes(ctx.chat.id)) return;
   const text = ctx.match;
   if (!text) return;
