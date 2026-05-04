@@ -71,7 +71,7 @@ bot.command('start', (ctx) => {
 
 bot.command('chatid', (ctx) => ctx.reply(`Chat ID: \`${ctx.chat.id}\``, { parse_mode: 'Markdown' }));
 
-bot.command('echo', async (ctx) => {
+bot.command('say', async (ctx) => {
   if (ctx.chat.type === 'private') return;
   if (ALLOWED_CHATS && !ALLOWED_CHATS.includes(ctx.chat.id)) return;
   const text = ctx.match;
