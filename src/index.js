@@ -60,7 +60,7 @@ async function handleMessage(ctx, contentKey) {
           : windowHours * 60 * 60 * 1000;
         const warning = await ctx.reply(
           `${mentionUser(ctx.from)}, повторення оголошень не частіше ніж раз в два дні. До наступної публікації: ${formatRemaining(remainingMs)}`,
-          { parse_mode: 'HTML' }
+          { parse_mode: 'HTML', disable_notification: true }
         );
         setTimeout(async () => {
           try { await ctx.api.deleteMessage(chatId, warning.message_id); } catch (_) {}
