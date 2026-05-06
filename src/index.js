@@ -47,7 +47,9 @@ async function handleMessage(ctx, contentKey) {
   if (isDuplicate(userId, chatId, contentKey, windowHours)) {
     try {
       await ctx.deleteMessage();
-      console.log(`[${new Date().toISOString()}] Deleted duplicate from user ${userId} in chat ${chatId}`);
+      const fullName = [ctx.from.first_name, ctx.from.last_name].filter(Boolean).join(' ');
+      const username = ctx.from.username ? ` @${ctx.from.username}` : '';
+      console.log(`[${new Date().toISOString()}] Deleted duplicate from ${fullName}${username} (${userId}) in chat ${chatId}`);
 
       const key = `${userId}:${chatId}`;
       const count = (deletionCounts.get(key) || 0) + 1;
