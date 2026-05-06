@@ -55,7 +55,7 @@ async function handleMessage(ctx, contentKey) {
       const count = (deletionCounts.get(key) || 0) + 1;
       deletionCounts.set(key, count);
 
-      if (count === 2) {
+      if (count === 1) {
         const originalTs = getOriginalTimestamp(userId, chatId, contentKey, windowHours);
         const remainingMs = originalTs
           ? (originalTs + windowHours * 60 * 60 * 1000) - Date.now()
