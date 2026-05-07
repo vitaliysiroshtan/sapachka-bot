@@ -23,6 +23,13 @@ db.exec(`
   );
 `);
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Returns UTC midnight timestamp for the day containing ts
+function utcDayStart(ts) {
+  return ts - (ts % DAY_MS);
+}
+
 function hashText(text) {
   return crypto.createHash('sha256')
     .update(text.toLowerCase().trim())
@@ -30,13 +37,18 @@ function hashText(text) {
 }
 
 function isDuplicate(userId, chatId, contentKey, windowHours) {
-  const cutoff = Date.now() - windowHours * 60 * 60 * 1000;
+  const windowDays = Math.ceil(windowHours / 24);
+  // Extra 24h buffer so edge cases near midnight are always found
+  const cutoff = Date.now() - (windowHours + 24) * 60 * 60 * 1000;
   const row = db.prepare(`
-    SELECT 1 FROM seen_messages
+    SELECT created_at FROM seen_messages
     WHERE user_id = ? AND chat_id = ? AND text_hash = ? AND created_at > ?
+    ORDER BY created_at DESC
     LIMIT 1
   `).get(userId, chatId, contentKey, cutoff);
-  return row !== undefined;
+  if (!row) return false;
+  const daysDiff = (utcDayStart(Date.now()) - utcDayStart(row.created_at)) / DAY_MS;
+  return daysDiff < windowDays;
 }
 
 function recordMessage(userId, chatId, contentKey) {
@@ -47,7 +59,7 @@ function recordMessage(userId, chatId, contentKey) {
 }
 
 function getOriginalTimestamp(userId, chatId, contentKey, windowHours) {
-  const cutoff = Date.now() - windowHours * 60 * 60 * 1000;
+  const cutoff = Date.now() - (windowHours + 24) * 60 * 60 * 1000;
   const row = db.prepare(`
     SELECT created_at FROM seen_messages
     WHERE user_id = ? AND chat_id = ? AND text_hash = ? AND created_at > ?
@@ -67,8 +79,8 @@ function setWindowHours(chatId, hours) {
 }
 
 function pruneOld(windowHours) {
-  const cutoff = Date.now() - windowHours * 60 * 60 * 1000;
+  const cutoff = Date.now() - (windowHours + 24) * 60 * 60 * 1000;
   return db.prepare(`DELETE FROM seen_messages WHERE created_at < ?`).run(cutoff).changes;
 }
 
-module.exports = { hashText, isDuplicate, recordMessage, pruneOld, getOriginalTimestamp, getWindowHours, setWindowHours };
+module.exports = { DAY_MS, utcDayStart, hashText, isDuplicate, recordMessage, pruneOld, getOriginalTimestamp, getWindowHours, setWindowHours };

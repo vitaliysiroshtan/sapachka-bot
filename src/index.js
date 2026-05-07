@@ -1,6 +1,6 @@
 require('dotenv').config();
 const { Bot } = require('grammy');
-const { hashText, isDuplicate, recordMessage, pruneOld, getOriginalTimestamp, getWindowHours, setWindowHours } = require('./db');
+const { DAY_MS, utcDayStart, hashText, isDuplicate, recordMessage, pruneOld, getOriginalTimestamp, getWindowHours, setWindowHours } = require('./db');
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const WINDOW_HOURS = parseFloat(process.env.WINDOW_HOURS || '48');
@@ -57,9 +57,11 @@ async function handleMessage(ctx, contentKey) {
 
       if (count === 1) {
         const originalTs = getOriginalTimestamp(userId, chatId, contentKey, windowHours);
-        const remainingMs = originalTs
-          ? (originalTs + windowHours * 60 * 60 * 1000) - Date.now()
-          : windowHours * 60 * 60 * 1000;
+        const windowDays = Math.ceil(windowHours / 24);
+        const allowedFrom = originalTs
+          ? utcDayStart(originalTs) + windowDays * DAY_MS
+          : Date.now() + windowHours * 60 * 60 * 1000;
+        const remainingMs = Math.max(0, allowedFrom - Date.now());
         const warning = await ctx.reply(
           `${mentionUser(ctx.from)}, повторення оголошень не частіше ніж раз в два дні. До наступної публікації: ${formatRemaining(remainingMs)}`,
           { parse_mode: 'HTML', disable_notification: true }
