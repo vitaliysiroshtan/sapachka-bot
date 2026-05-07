@@ -4,6 +4,7 @@ const path = require('path');
 
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'data.db');
 const db = new Database(DB_PATH);
+// WAL mode survives crashes and OOM kills without corrupting the database
 db.pragma('journal_mode = WAL');
 
 db.exec(`
@@ -25,12 +26,13 @@ db.exec(`
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// Returns UTC midnight timestamp for the day containing ts
+// Unix timestamps are UTC, so stripping the sub-day remainder gives UTC midnight
 function utcDayStart(ts) {
   return ts - (ts % DAY_MS);
 }
 
 function hashText(text) {
+  // Store a hash instead of raw text — the original message content is never saved
   return crypto.createHash('sha256')
     .update(text.toLowerCase().trim())
     .digest('hex');
@@ -38,7 +40,8 @@ function hashText(text) {
 
 function isDuplicate(userId, chatId, contentKey, windowHours) {
   const windowDays = Math.ceil(windowHours / 24);
-  // Extra 24h buffer so edge cases near midnight are always found
+  // The SQL cutoff is wider than windowHours by 24h so records near the calendar
+  // boundary are always found — the actual allow/block decision is made in JS below
   const cutoff = Date.now() - (windowHours + 24) * 60 * 60 * 1000;
   const row = db.prepare(`
     SELECT created_at FROM seen_messages
@@ -47,6 +50,9 @@ function isDuplicate(userId, chatId, contentKey, windowHours) {
     LIMIT 1
   `).get(userId, chatId, contentKey, cutoff);
   if (!row) return false;
+  // Calendar-day check: allow reposting once N full UTC days have passed since
+  // the day of the original post, regardless of the exact hour within that day.
+  // e.g. windowDays=2: posted Tuesday → allowed again from Thursday 00:00 UTC
   const daysDiff = (utcDayStart(Date.now()) - utcDayStart(row.created_at)) / DAY_MS;
   return daysDiff < windowDays;
 }
@@ -59,6 +65,7 @@ function recordMessage(userId, chatId, contentKey) {
 }
 
 function getOriginalTimestamp(userId, chatId, contentKey, windowHours) {
+  // Same +24h buffer as isDuplicate to ensure consistency
   const cutoff = Date.now() - (windowHours + 24) * 60 * 60 * 1000;
   const row = db.prepare(`
     SELECT created_at FROM seen_messages
@@ -79,6 +86,8 @@ function setWindowHours(chatId, hours) {
 }
 
 function pruneOld(windowHours) {
+  // Match the +24h buffer from isDuplicate so we never prune records that are
+  // still needed for the calendar-day boundary check
   const cutoff = Date.now() - (windowHours + 24) * 60 * 60 * 1000;
   return db.prepare(`DELETE FROM seen_messages WHERE created_at < ?`).run(cutoff).changes;
 }

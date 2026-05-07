@@ -20,15 +20,20 @@ if (!BOT_TOKEN) {
 }
 
 const bot = new Bot(BOT_TOKEN);
-const deletionCounts = new Map(); // key: `${userId}:${chatId}`, value: number of deletions this session
+
+// In-memory only — resets on restart, which is intentional.
+// We only need to warn once per session; persistent tracking would just add complexity.
+const deletionCounts = new Map(); // key: `${userId}:${chatId}`
 
 function mentionUser(user) {
+  // HTML entities must be escaped — user-controlled names can contain <, >, &
   const fullName = [user.first_name, user.last_name].filter(Boolean).join(' ');
   const escaped = fullName.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   return `<a href="tg://user?id=${user.id}">${escaped}</a>`;
 }
 
 function formatRemaining(ms) {
+  // Always show at least 1 minute to avoid a confusing "0г 0хв" edge case
   const totalMinutes = Math.max(1, Math.ceil(ms / 60000));
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
@@ -42,6 +47,7 @@ async function handleMessage(ctx, contentKey) {
   if (!userId) return;
   if (ALLOWED_CHATS && !ALLOWED_CHATS.includes(chatId)) return;
 
+  // Per-group setting takes precedence over the global default
   const windowHours = getWindowHours(chatId) ?? WINDOW_HOURS;
 
   if (isDuplicate(userId, chatId, contentKey, windowHours)) {
@@ -55,9 +61,13 @@ async function handleMessage(ctx, contentKey) {
       const count = (deletionCounts.get(key) || 0) + 1;
       deletionCounts.set(key, count);
 
+      // Warn on the first deletion only — subsequent ones are silently removed
       if (count === 1) {
         const originalTs = getOriginalTimestamp(userId, chatId, contentKey, windowHours);
         const windowDays = Math.ceil(windowHours / 24);
+        // Calendar-day boundary: user can repost once windowDays full UTC days have passed
+        // since the day they originally posted — regardless of the exact hour.
+        // e.g. posted Tuesday 09:30 → allowed again from Thursday 00:00 UTC (not Thursday 09:30).
         const allowedFrom = originalTs
           ? utcDayStart(originalTs) + windowDays * DAY_MS
           : Date.now() + windowHours * 60 * 60 * 1000;
@@ -66,11 +76,13 @@ async function handleMessage(ctx, contentKey) {
           `${mentionUser(ctx.from)}, повторення оголошень не частіше ніж раз в два дні. До наступної публікації: ${formatRemaining(remainingMs)}`,
           { parse_mode: 'HTML', disable_notification: true }
         );
+        // Auto-delete the warning to keep the chat clean
         setTimeout(async () => {
           try { await ctx.api.deleteMessage(chatId, warning.message_id); } catch (_) {}
         }, 2 * 60 * 1000);
       }
     } catch (err) {
+      // Most common cause: bot lost admin rights or message was already deleted
       console.error(`Could not delete message: ${err.message}`);
     }
   } else {
@@ -89,10 +101,14 @@ bot.command('start', (ctx) => {
   }
 });
 
+// Useful for finding group chat IDs to populate ALLOWED_CHATS, and for finding
+// your own user ID to set ADMIN_USER_ID (send this in a private chat with the bot)
 bot.command('chatid', (ctx) => ctx.reply(`Chat ID: \`${ctx.chat.id}\``, { parse_mode: 'Markdown' }));
 
 bot.command('say', async (ctx) => {
   if (ctx.chat.type === 'private') {
+    // Private usage: owner-only remote announce. Format: /say <chat_id> <message>
+    // Restricted to ADMIN_USER_ID to prevent anyone else from making the bot post anywhere
     if (!ADMIN_USER_ID || ctx.from.id !== ADMIN_USER_ID) return;
     const match = ctx.match.match(/^(-?\d+)\s+([\s\S]+)$/);
     if (!match) {
@@ -109,6 +125,7 @@ bot.command('say', async (ctx) => {
     return;
   }
 
+  // Group usage: admin posts as the bot, original command message is deleted
   if (ALLOWED_CHATS && !ALLOWED_CHATS.includes(ctx.chat.id)) return;
   const text = ctx.match;
   if (!text) return;
@@ -138,7 +155,8 @@ bot.on('message:text', async (ctx) => {
 
 bot.on('message:photo', async (ctx) => {
   if (ctx.chat.type === 'private') return;
-  const photo = ctx.message.photo.at(-1); // largest available size = most reliable unique id
+  // file_unique_id is stable across sessions and bots; file_id is not
+  const photo = ctx.message.photo.at(-1); // largest size has the most reliable id
   await handleMessage(ctx, photo.file_unique_id);
 });
 
