@@ -1,6 +1,6 @@
 require('dotenv').config();
 const { Bot } = require('grammy');
-const { DAY_MS, utcDayStart, hashText, isDuplicate, recordMessage, pruneOld, getOriginalTimestamp, getWindowHours, setWindowHours } = require('./db');
+const { DAY_MS, utcDayStart, hashText, isDuplicate, recordMessage, pruneOld, getOriginalTimestamp, getWindowHours, setWindowHours, incrementViolation, resetViolations } = require('./db');
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const WINDOW_HOURS = parseFloat(process.env.WINDOW_HOURS || '48');
@@ -58,11 +58,44 @@ async function handleMessage(ctx, contentKey) {
       console.log(`[${new Date().toISOString()}] Deleted duplicate from ${fullName}${username} (${userId}) in chat ${chatId}`);
 
       const key = `${userId}:${chatId}`;
-      const count = (deletionCounts.get(key) || 0) + 1;
-      deletionCounts.set(key, count);
+      const sessionCount = (deletionCounts.get(key) || 0) + 1;
+      deletionCounts.set(key, sessionCount);
 
-      // Warn on the first deletion only — subsequent ones are silently removed
-      if (count === 1) {
+      const violations = incrementViolation(userId, chatId);
+
+      if (violations >= 3) {
+        // 3rd strike: restrict all sending for 7 days and reset the counter
+        resetViolations(userId, chatId);
+        const untilDate = Math.floor((Date.now() + 7 * 24 * 60 * 60 * 1000) / 1000);
+        try {
+          await ctx.api.restrictChatMember(chatId, userId, {
+            permissions: {
+              can_send_messages: false,
+              can_send_audios: false,
+              can_send_documents: false,
+              can_send_photos: false,
+              can_send_videos: false,
+              can_send_video_notes: false,
+              can_send_voice_notes: false,
+              can_send_polls: false,
+              can_send_other_messages: false,
+              can_add_web_page_previews: false,
+            },
+            until_date: untilDate,
+          });
+          console.log(`[${new Date().toISOString()}] Restricted ${fullName}${username} (${userId}) in chat ${chatId} for 7 days (3 violations)`);
+          const notice = await ctx.reply(
+            `${mentionUser(ctx.from)}, вас обмежено у надсиланні повідомлень на тиждень через систематичне повторення оголошень.`,
+            { parse_mode: 'HTML', disable_notification: true }
+          );
+          setTimeout(async () => {
+            try { await ctx.api.deleteMessage(chatId, notice.message_id); } catch (_) {}
+          }, 2 * 60 * 1000);
+        } catch (err) {
+          console.error(`Could not restrict user: ${err.message}`);
+        }
+      } else if (sessionCount === 1) {
+        // Warn on the first deletion per session — subsequent ones are silently removed
         const originalTs = getOriginalTimestamp(userId, chatId, contentKey, windowHours);
         const windowDays = Math.ceil(windowHours / 24);
         // Calendar-day boundary: user can repost once windowDays full UTC days have passed

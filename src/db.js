@@ -22,6 +22,13 @@ db.exec(`
     chat_id      INTEGER PRIMARY KEY,
     window_hours REAL NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS violations (
+    user_id  INTEGER NOT NULL,
+    chat_id  INTEGER NOT NULL,
+    count    INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, chat_id)
+  );
 `);
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -85,6 +92,18 @@ function setWindowHours(chatId, hours) {
   db.prepare('INSERT OR REPLACE INTO group_settings (chat_id, window_hours) VALUES (?, ?)').run(chatId, hours);
 }
 
+function incrementViolation(userId, chatId) {
+  db.prepare(`
+    INSERT INTO violations (user_id, chat_id, count) VALUES (?, ?, 1)
+    ON CONFLICT(user_id, chat_id) DO UPDATE SET count = count + 1
+  `).run(userId, chatId);
+  return db.prepare('SELECT count FROM violations WHERE user_id = ? AND chat_id = ?').get(userId, chatId).count;
+}
+
+function resetViolations(userId, chatId) {
+  db.prepare('DELETE FROM violations WHERE user_id = ? AND chat_id = ?').run(userId, chatId);
+}
+
 function pruneOld(windowHours) {
   // Match the +24h buffer from isDuplicate so we never prune records that are
   // still needed for the calendar-day boundary check
@@ -92,4 +111,4 @@ function pruneOld(windowHours) {
   return db.prepare(`DELETE FROM seen_messages WHERE created_at < ?`).run(cutoff).changes;
 }
 
-module.exports = { DAY_MS, utcDayStart, hashText, isDuplicate, recordMessage, pruneOld, getOriginalTimestamp, getWindowHours, setWindowHours };
+module.exports = { DAY_MS, utcDayStart, hashText, isDuplicate, recordMessage, pruneOld, getOriginalTimestamp, getWindowHours, setWindowHours, incrementViolation, resetViolations };
