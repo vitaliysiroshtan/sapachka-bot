@@ -1,6 +1,6 @@
 require('dotenv').config();
 const { Bot } = require('grammy');
-const { DAY_MS, utcDayStart, hashText, isDuplicate, recordMessage, pruneOld, getOriginalTimestamp, getWindowHours, setWindowHours, incrementViolation, resetViolations } = require('./db');
+const { DAY_MS, utcDayStart, hashText, isDuplicate, recordMessage, pruneOld, getOriginalTimestamp, getWindowHours, setWindowHours, incrementViolation, resetViolations, upsertUser, getUserIdByUsername } = require('./db');
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const WINDOW_HOURS = parseFloat(process.env.WINDOW_HOURS || '48');
@@ -47,6 +47,7 @@ async function handleMessage(ctx, contentKey) {
 
   if (!userId) return;
   if (ALLOWED_CHATS && !ALLOWED_CHATS.includes(chatId)) return;
+  upsertUser(userId, chatId, ctx.from.username);
 
   // Per-group setting takes precedence over the global default
   const windowHours = getWindowHours(chatId) ?? WINDOW_HOURS;
@@ -177,6 +178,43 @@ bot.command('sethours', async (ctx) => {
   setWindowHours(ctx.chat.id, hours);
   const label = hours >= 1 ? `${hours}h` : `~${Math.round(hours * 60)} min`;
   await ctx.reply(`Duplicate window set to ${label} for this group.`);
+});
+
+bot.command('clearviolations', async (ctx) => {
+  if (ctx.chat.type === 'private') return;
+  if (ALLOWED_CHATS && !ALLOWED_CHATS.includes(ctx.chat.id)) return;
+  if (!await isGroupAdmin(ctx)) return;
+
+  let targetUserId = null;
+
+  // Reply to a message → use that message's author
+  if (ctx.message.reply_to_message?.from) {
+    targetUserId = ctx.message.reply_to_message.from.id;
+  }
+
+  // text_mention entity — user has no username, mentioned by tapping their name
+  if (!targetUserId) {
+    const entity = ctx.message.entities?.find(e => e.type === 'text_mention');
+    if (entity?.user) targetUserId = entity.user.id;
+  }
+
+  // @username mention — look up user_id from our cache
+  if (!targetUserId) {
+    const entity = ctx.message.entities?.find(e => e.type === 'mention');
+    if (entity) {
+      const username = ctx.message.text.slice(entity.offset + 1, entity.offset + entity.length);
+      targetUserId = getUserIdByUsername(ctx.chat.id, username);
+    }
+  }
+
+  if (!targetUserId) {
+    await ctx.reply('Reply to their message or mention them to clear their violations.');
+    return;
+  }
+
+  resetViolations(targetUserId, ctx.chat.id);
+  deletionCounts.delete(`${targetUserId}:${ctx.chat.id}`);
+  await ctx.reply('Violations cleared.');
 });
 
 bot.on('message:text', async (ctx) => {

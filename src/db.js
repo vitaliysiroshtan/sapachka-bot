@@ -29,6 +29,14 @@ db.exec(`
     count    INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (user_id, chat_id)
   );
+
+  CREATE TABLE IF NOT EXISTS users (
+    user_id  INTEGER NOT NULL,
+    chat_id  INTEGER NOT NULL,
+    username TEXT,
+    PRIMARY KEY (user_id, chat_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_users_username ON users (chat_id, username);
 `);
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -104,6 +112,18 @@ function resetViolations(userId, chatId) {
   db.prepare('DELETE FROM violations WHERE user_id = ? AND chat_id = ?').run(userId, chatId);
 }
 
+function upsertUser(userId, chatId, username) {
+  db.prepare(`
+    INSERT INTO users (user_id, chat_id, username) VALUES (?, ?, ?)
+    ON CONFLICT(user_id, chat_id) DO UPDATE SET username = excluded.username
+  `).run(userId, chatId, username || null);
+}
+
+function getUserIdByUsername(chatId, username) {
+  const row = db.prepare('SELECT user_id FROM users WHERE chat_id = ? AND username = ?').get(chatId, username);
+  return row ? row.user_id : null;
+}
+
 function pruneOld(windowHours) {
   // Match the +24h buffer from isDuplicate so we never prune records that are
   // still needed for the calendar-day boundary check
@@ -111,4 +131,4 @@ function pruneOld(windowHours) {
   return db.prepare(`DELETE FROM seen_messages WHERE created_at < ?`).run(cutoff).changes;
 }
 
-module.exports = { DAY_MS, utcDayStart, hashText, isDuplicate, recordMessage, pruneOld, getOriginalTimestamp, getWindowHours, setWindowHours, incrementViolation, resetViolations };
+module.exports = { DAY_MS, utcDayStart, hashText, isDuplicate, recordMessage, pruneOld, getOriginalTimestamp, getWindowHours, setWindowHours, incrementViolation, resetViolations, upsertUser, getUserIdByUsername };
