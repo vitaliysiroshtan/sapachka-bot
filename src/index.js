@@ -13,6 +13,7 @@ const ALLOWED_CHATS = process.env.ALLOWED_CHATS
   : null;
 const ADMIN_USER_ID = process.env.ADMIN_USER_ID ? parseInt(process.env.ADMIN_USER_ID, 10) : null;
 if (!ADMIN_USER_ID) console.warn('ADMIN_USER_ID not set — private /say command disabled.');
+const MAX_VIOLATIONS = parseInt(process.env.MAX_VIOLATIONS || '4', 10);
 
 if (!BOT_TOKEN) {
   console.error('BOT_TOKEN is not set. Copy .env.example to .env and fill it in.');
@@ -63,27 +64,24 @@ async function handleMessage(ctx, contentKey) {
 
       const violations = incrementViolation(userId, chatId);
 
-      if (violations >= 3) {
-        // 3rd strike: restrict all sending for 7 days and reset the counter
+      if (violations >= MAX_VIOLATIONS) {
+        // Nth strike: restrict all sending for 7 days and reset the counter
         resetViolations(userId, chatId);
         const untilDate = Math.floor((Date.now() + 7 * 24 * 60 * 60 * 1000) / 1000);
         try {
           await ctx.api.restrictChatMember(chatId, userId, {
-            permissions: {
-              can_send_messages: false,
-              can_send_audios: false,
-              can_send_documents: false,
-              can_send_photos: false,
-              can_send_videos: false,
-              can_send_video_notes: false,
-              can_send_voice_notes: false,
-              can_send_polls: false,
-              can_send_other_messages: false,
-              can_add_web_page_previews: false,
-            },
-            until_date: untilDate,
-          });
-          console.log(`[${new Date().toISOString()}] Restricted ${fullName}${username} (${userId}) in chat ${chatId} for 7 days (3 violations)`);
+            can_send_messages: false,
+            can_send_audios: false,
+            can_send_documents: false,
+            can_send_photos: false,
+            can_send_videos: false,
+            can_send_video_notes: false,
+            can_send_voice_notes: false,
+            can_send_polls: false,
+            can_send_other_messages: false,
+            can_add_web_page_previews: false,
+          }, { until_date: untilDate });
+          console.log(`[${new Date().toISOString()}] Restricted ${fullName}${username} (${userId}) in chat ${chatId} for 7 days (${MAX_VIOLATIONS} violations)`);
           const notice = await ctx.reply(
             `${mentionUser(ctx.from)}, вас обмежено у надсиланні повідомлень на тиждень через систематичне повторення оголошень.`,
             { parse_mode: 'HTML', disable_notification: true }
