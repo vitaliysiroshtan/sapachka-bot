@@ -26,6 +26,18 @@ const bot = new Bot(BOT_TOKEN);
 // We only need to warn once per session; persistent tracking would just add complexity.
 const deletionCounts = new Map(); // key: `${userId}:${chatId}`
 
+// Groups photos from the same multi-photo send so they count as one violation.
+// Telegram delivers each photo as a separate event but with the same media_group_id.
+const mediaGroupCache = new Map(); // media_group_id -> { isDup: bool, timestamp: number }
+const MEDIA_GROUP_TTL_MS = 10_000;
+
+function cleanMediaGroupCache() {
+  const now = Date.now();
+  for (const [key, val] of mediaGroupCache) {
+    if (now - val.timestamp > MEDIA_GROUP_TTL_MS) mediaGroupCache.delete(key);
+  }
+}
+
 function mentionUser(user) {
   // HTML entities must be escaped — user-controlled names can contain <, >, &
   const fullName = [user.first_name, user.last_name].filter(Boolean).join(' ');
@@ -117,8 +129,10 @@ async function handleMessage(ctx, contentKey) {
       // Most common cause: bot lost admin rights or message was already deleted
       console.error(`Could not delete message: ${err.message}`);
     }
+    return true;
   } else {
     recordMessage(userId, chatId, contentKey);
+    return false;
   }
 }
 
@@ -226,6 +240,32 @@ bot.on('message:photo', async (ctx) => {
   if (ctx.chat.type === 'private') return;
   // file_unique_id is stable across sessions and bots; file_id is not
   const photo = ctx.message.photo.at(-1); // largest size has the most reliable id
+  const mediaGroupId = ctx.message.media_group_id;
+
+  if (mediaGroupId) {
+    cleanMediaGroupCache();
+    if (mediaGroupCache.has(mediaGroupId)) {
+      // Subsequent photo in an already-processed group
+      const { isDup } = mediaGroupCache.get(mediaGroupId);
+      if (isDup) {
+        // Delete silently — part of duplicate group, violation already counted
+        try { await ctx.deleteMessage(); } catch (_) {}
+      } else {
+        // New group send — record this photo so future re-sends are caught
+        const userId = ctx.from?.id;
+        const chatId = ctx.chat.id;
+        if (userId && (!ALLOWED_CHATS || ALLOWED_CHATS.includes(chatId))) {
+          recordMessage(userId, chatId, photo.file_unique_id);
+        }
+      }
+      return;
+    }
+    // First photo in group — run full logic, cache the result
+    const isDup = await handleMessage(ctx, photo.file_unique_id);
+    mediaGroupCache.set(mediaGroupId, { isDup, timestamp: Date.now() });
+    return;
+  }
+
   await handleMessage(ctx, photo.file_unique_id);
 });
 

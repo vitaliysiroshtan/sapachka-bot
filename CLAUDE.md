@@ -56,6 +56,7 @@ To change `WINDOW_HOURS` on the live deployment: `fly secrets set WINDOW_HOURS=2
 - ~~**Forwarded messages**~~ — already handled. Telegram still populates `message.text` / `message.photo` on forwards, so the existing handlers catch them. `ctx.from.id` is the forwarder, content key is the same → detected as duplicate correctly. No code changes needed.
 - **Analytics** — track deletion counts per user/chat over time. Think about what would actually be useful to surface (top spammers, busiest hours, etc.) before building.
 - **Fuzzy/similar message detection** — originally planned next phase after identical-only. Likely needs a similarity threshold (e.g. Levenshtein distance or cosine similarity on word sets). Decide on threshold carefully to avoid false positives.
+- **Bot-to-bot integration with @missrose_bot** — offload messaging/warnings/muting to Rose instead of doing it directly. Requires figuring out Rose's command API (likely just sending Rose commands as chat messages, e.g. `/warn`, `/mute`). Benefit: Rose already has a UX users are familiar with, and its actions show up in her audit log.
 
 ## Style Guidelines
 
