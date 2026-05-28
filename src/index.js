@@ -53,7 +53,7 @@ function formatRemaining(ms) {
   return `${hours}г ${minutes}хв`;
 }
 
-async function handleMessage(ctx, contentKey) {
+async function handleMessage(ctx, contentKey, label = 'message') {
   const userId = ctx.from?.id;
   const chatId = ctx.chat.id;
 
@@ -69,7 +69,7 @@ async function handleMessage(ctx, contentKey) {
       await ctx.deleteMessage();
       const fullName = [ctx.from.first_name, ctx.from.last_name].filter(Boolean).join(' ');
       const username = ctx.from.username ? ` @${ctx.from.username}` : '';
-      console.log(`[${new Date().toISOString()}] Deleted duplicate from ${fullName}${username} (${userId}) in chat ${chatId}`);
+      console.log(`[${new Date().toISOString()}] Deleted duplicate ${label} from ${fullName}${username} (${userId}) in chat ${chatId}`);
 
       const key = `${userId}:${chatId}`;
       const sessionCount = (deletionCounts.get(key) || 0) + 1;
@@ -233,7 +233,7 @@ bot.command('clearviolations', async (ctx) => {
 
 bot.on('message:text', async (ctx) => {
   if (ctx.chat.type === 'private') return;
-  await handleMessage(ctx, hashText(ctx.message.text));
+  await handleMessage(ctx, hashText(ctx.message.text), 'text');
 });
 
 bot.on('message:photo', async (ctx) => {
@@ -249,7 +249,12 @@ bot.on('message:photo', async (ctx) => {
       const { isDup } = mediaGroupCache.get(mediaGroupId);
       if (isDup) {
         // Delete silently — part of duplicate group, violation already counted
-        try { await ctx.deleteMessage(); } catch (_) {}
+        try {
+          await ctx.deleteMessage();
+          const fullName = [ctx.from.first_name, ctx.from.last_name].filter(Boolean).join(' ');
+          const username = ctx.from.username ? ` @${ctx.from.username}` : '';
+          console.log(`[${new Date().toISOString()}] Deleted duplicate photo (media group) from ${fullName}${username} (${ctx.from.id}) in chat ${ctx.chat.id}`);
+        } catch (_) {}
       } else {
         // New group send — record this photo so future re-sends are caught
         const userId = ctx.from?.id;
@@ -261,12 +266,12 @@ bot.on('message:photo', async (ctx) => {
       return;
     }
     // First photo in group — run full logic, cache the result
-    const isDup = await handleMessage(ctx, photo.file_unique_id);
+    const isDup = await handleMessage(ctx, photo.file_unique_id, 'photo (media group)');
     mediaGroupCache.set(mediaGroupId, { isDup, timestamp: Date.now() });
     return;
   }
 
-  await handleMessage(ctx, photo.file_unique_id);
+  await handleMessage(ctx, photo.file_unique_id, 'photo');
 });
 
 setInterval(() => {
