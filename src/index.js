@@ -105,8 +105,7 @@ async function handleMessage(ctx, contentKey, label = 'message') {
         } catch (err) {
           console.error(`Could not restrict user: ${err.message}`);
         }
-      } else if (sessionCount === 1) {
-        // Warn on the first deletion per session — subsequent ones are silently removed
+      } else {
         const originalTs = getOriginalTimestamp(userId, chatId, contentKey, windowHours);
         const windowDays = Math.ceil(windowHours / 24);
         // Calendar-day boundary: user can repost once windowDays full UTC days have passed
@@ -117,7 +116,7 @@ async function handleMessage(ctx, contentKey, label = 'message') {
           : Date.now() + windowHours * 60 * 60 * 1000;
         const remainingMs = Math.max(0, allowedFrom - Date.now());
         const warning = await ctx.reply(
-          `${mentionUser(ctx.from)}, повторення оголошень не частіше ніж раз в два дні. До наступної публікації: ${formatRemaining(remainingMs)}`,
+          `${mentionUser(ctx.from)}, повторення повідомлень не частіше ніж раз в два дні. До наступної публікації: ${formatRemaining(remainingMs)}`,
           { parse_mode: 'HTML', disable_notification: true }
         );
         // Auto-delete the warning to keep the chat clean
