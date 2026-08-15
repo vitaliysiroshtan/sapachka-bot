@@ -1,6 +1,6 @@
 require('dotenv').config();
 const { Bot } = require('grammy');
-const { DAY_MS, utcDayStart, hashText, isDuplicate, recordMessage, pruneOld, getOriginalTimestamp, getWindowHours, setWindowHours, incrementViolation, resetViolations, upsertUser, getUserIdByUsername } = require('./db');
+const { DAY_MS, utcDayStart, hashText, isDuplicate, recordMessage, pruneOld, getOriginalTimestamp, getWindowHours, setWindowHours, incrementViolation, resetViolations, upsertUser, getUserIdByUsername, addException, removeException, getExceptions } = require('./db');
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const WINDOW_HOURS = parseFloat(process.env.WINDOW_HOURS || '48');
@@ -230,8 +230,50 @@ bot.command('clearviolations', async (ctx) => {
   await ctx.reply('Violations cleared.');
 });
 
+bot.command('addexception', async (ctx) => {
+  if (ctx.chat.type === 'private') return;
+  if (ALLOWED_CHATS && !ALLOWED_CHATS.includes(ctx.chat.id)) return;
+  if (!await isGroupAdmin(ctx)) return;
+  const word = ctx.match.trim().toLowerCase();
+  if (!word) {
+    await ctx.reply('Usage: /addexception куплю');
+    return;
+  }
+  addException(ctx.chat.id, word);
+  await ctx.reply(`Exception added: "${word}". Messages containing this word won't trigger duplicate detection.`);
+});
+
+bot.command('removeexception', async (ctx) => {
+  if (ctx.chat.type === 'private') return;
+  if (ALLOWED_CHATS && !ALLOWED_CHATS.includes(ctx.chat.id)) return;
+  if (!await isGroupAdmin(ctx)) return;
+  const word = ctx.match.trim().toLowerCase();
+  if (!word) {
+    await ctx.reply('Usage: /removeexception куплю');
+    return;
+  }
+  removeException(ctx.chat.id, word);
+  await ctx.reply(`Exception removed: "${word}".`);
+});
+
+bot.command('listexceptions', async (ctx) => {
+  if (ctx.chat.type === 'private') return;
+  if (ALLOWED_CHATS && !ALLOWED_CHATS.includes(ctx.chat.id)) return;
+  if (!await isGroupAdmin(ctx)) return;
+  const words = getExceptions(ctx.chat.id);
+  await ctx.reply(words.length ? `Exception words: ${words.map(w => `"${w}"`).join(', ')}` : 'No exceptions set.');
+});
+
+function hasExceptionWord(text, exceptions) {
+  if (!exceptions.length) return false;
+  const words = text.toLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
+  return words.some(w => exceptions.includes(w));
+}
+
 bot.on('message:text', async (ctx) => {
   if (ctx.chat.type === 'private') return;
+  const exceptions = getExceptions(ctx.chat.id);
+  if (hasExceptionWord(ctx.message.text, exceptions)) return;
   await handleMessage(ctx, hashText(ctx.message.text), 'text');
 });
 
