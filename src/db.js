@@ -46,6 +46,7 @@ db.exec(`
 `);
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const GRACE_MS = 5 * 60 * 1000;
 
 // Unix timestamps are UTC, so stripping the sub-day remainder gives UTC midnight
 function utcDayStart(ts) {
@@ -71,6 +72,9 @@ function isDuplicate(userId, chatId, contentKey, windowHours) {
     LIMIT 1
   `).get(userId, chatId, contentKey, cutoff);
   if (!row) return false;
+  // Grace period: lets a user re-send within minutes of their own post (e.g. they
+  // deleted it to fix a typo, not knowing about /edit) without a dup penalty.
+  if (Date.now() - row.created_at < GRACE_MS) return false;
   // Calendar-day check: allow reposting once N full UTC days have passed since
   // the day of the original post, regardless of the exact hour within that day.
   // e.g. windowDays=2: posted Tuesday → allowed again from Thursday 00:00 UTC
